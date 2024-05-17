@@ -1,0 +1,37 @@
+name: CI/CD Process 🐍
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  cicd:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/<your-pypi-project-name>
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run test suite
+        run: |
+          python -m unittest discover tests
+
+      - name: Publish package distributions to PyPI
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: pypa/gh-action-pypi-publish@release/v1
