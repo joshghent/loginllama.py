@@ -6,10 +6,12 @@ This Python module provides an interface to interact with the LoginLlama API, wh
 
 ## Installation
 
-Install via pip. Requires Python 3.6 or higher.
+Install via `uv` or pip. Requires Python 3.10 or higher.
 
 ```sh
-pip install loginllama.py
+uv pip install loginllama
+# or
+pip install loginllama
 ```
 
 ## Usage
@@ -17,15 +19,15 @@ pip install loginllama.py
 First, import the necessary classes:
 
 ```python
-from loginllama.loginllama import LoginLlama
+from loginllama import LoginLlama, verify_webhook_signature
 ```
 
 ### Initialization
 
-To initialize the `LoginLlama` class, you can either provide an API token directly or set it in the environment variable `LOGINLLAMA_API_KEY`.
+To initialize the `LoginLlama` class, you can either provide an API token directly or set it in the environment variable `LOGINLLAMA_API_KEY`. Pass `base_url` if you need to target a mock server.
 
 ```python
-loginllama = LoginLlama("YOUR_API_TOKEN")
+loginllama = LoginLlama(api_token="YOUR_API_TOKEN")
 ```
 
 Or, if using the environment variable `LOGINLLAMA_API_KEY`:
@@ -37,18 +39,19 @@ loginllama = LoginLlama()
 
 ### Checking Login Status
 
-The primary function provided by this module is `check_login`, which checks the login status of a user based on various parameters.
+The primary function provided by this module is `check_login`, which checks the login status of a user based on various parameters. Both snake_case and camelCase parameter names are accepted to match the docs.
 
 #### Parameters:
 
 - `request` (optional): A Django or Flask request object. If provided, the IP address and user agent will be extracted from this object.
-- `ip_address` (optional): The IP address of the user. If not provided and the `request` object is given, it will be extracted from the request.
-- `user_agent` (optional): The user agent string of the user. If not provided and the `request` object is given, it will be extracted from the request.
-- `identity_key`: The unique identity key for the user. This is a required parameter.
+- `ip_address` / `ipAddress` (optional): The IP address of the user. If not provided and the `request` object is given, it will be extracted from the request.
+- `user_agent` / `userAgent` (optional): The user agent string of the user. If not provided and the `request` object is given, it will be extracted from the request.
+- `identity_key` / `identityKey`: The unique identity key for the user. This is a required parameter.
+- `email_address`, `geo_country`, `geo_city`, `user_time_of_day`: Optional context fields.
 
 #### Return Value:
 
-The function returns a `LoginCheck` object. This object contains the result of the login check, including the status, a message, and any applicable codes indicating the reason for the status.
+The function returns a `LoginCheck` object. This object contains the result of the login check, including the status, message, codes, risk_score, environment, and meta data.
 
 #### Examples:
 
@@ -60,7 +63,7 @@ loginCheckResult = loginllama.check_login(
     user_agent="Mozilla/5.0",
     identity_key="user123"
 )
-print(loginCheckResult.status, loginCheckResult.message, loginCheckResult.codes)
+print(loginCheckResult.status, loginCheckResult.risk_score, loginCheckResult.codes)
 ```
 
 Using a Flask request object:
@@ -82,7 +85,7 @@ def login_check():
         return {
             "status": login_check_result.status,
             "message": login_check_result.message,
-            "codes": [code.value for code in login_check_result.codes]
+            "codes": [getattr(code, "value", code) for code in login_check_result.codes]
         }
     except ValueError as e:
         return str(e), 400
@@ -113,7 +116,9 @@ def login_check(request):
             return JsonResponse({
                 "status": login_check_result.status,
                 "message": login_check_result.message,
-                "codes": [code.value for code in login_check_result.codes]
+                "codes": [getattr(code, "value", code) for code in login_check_result.codes],
+                "risk_score": login_check_result.risk_score,
+                "environment": login_check_result.environment,
             })
         except ValueError as e:
             return JsonResponse({"error": str(e)}, status=400)
@@ -134,6 +139,26 @@ The default API endpoint used by this module is `https://loginllama.app/api/v1`.
 ## Login Status Codes
 
 The module provides an enumeration `LoginCheckStatus` that lists various possible status codes returned by the LoginLlama API, such as `VALID`, `IP_ADDRESS_SUSPICIOUS`, `KNOWN_BOT`, etc.
+
+## Webhook signature verification
+
+Use the helper to verify the `X-LoginLlama-Signature` header with the raw request body:
+
+```python
+from loginllama import verify_webhook_signature
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    payload = request.get_data()
+    signature = request.headers.get("X-LoginLlama-Signature")
+
+    if not verify_webhook_signature(payload, signature, os.environ["WEBHOOK_SECRET"]):
+        return "Invalid signature", 401
+
+    event = request.get_json()
+    # handle event...
+    return "ok", 200
+```
 
 ## Contributing
 
