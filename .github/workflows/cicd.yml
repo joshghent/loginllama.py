@@ -25,7 +25,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: uv venv && uv sync --dev
+        run: uv venv && uv sync --extra dev
 
       - name: Run test suite
         run: uv run pytest
