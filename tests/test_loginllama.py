@@ -42,10 +42,10 @@ def test_check_valid_login(monkeypatch):
 
     monkeypatch.setattr(Api, "post", fake_post)
 
-    result = client.check_login(
+    result = client.check(
+        "validUser",
         ip_address="192.168.1.1",
         user_agent="Mozilla/5.0",
-        identity_key="validUser",
     )
 
     assert result.status == "success"
@@ -65,27 +65,27 @@ def test_check_invalid_login_raises(monkeypatch):
     monkeypatch.setattr(Api, "post", fake_post)
 
     with pytest.raises(Exception) as exc:
-        client.check_login(
+        client.check(
+            "invalidUser",
             ip_address="192.168.1.1",
             user_agent="Mozilla/5.0",
-            identity_key="invalidUser",
         )
 
     assert str(exc.value) == "Login check failed"
 
 
 @pytest.mark.parametrize(
-    "kwargs,expected_message",
+    "identity_key,kwargs,expected_message",
     [
-        ({"user_agent": "ua", "identity_key": "id"}, "ip_address is required"),
-        ({"ip_address": "ip", "identity_key": "id"}, "user_agent is required"),
-        ({"ip_address": "ip", "user_agent": "ua"}, "identity_key is required"),
+        ("id", {"user_agent": "ua"}, "ip_address could not be detected"),
+        ("id", {"ip_address": "ip"}, "user_agent could not be detected"),
+        (None, {"ip_address": "ip", "user_agent": "ua"}, "identity_key is required"),
     ],
 )
-def test_missing_required_fields(kwargs, expected_message):
+def test_missing_required_fields(identity_key, kwargs, expected_message):
     client = LoginLlama(api_token="mockToken")
     with pytest.raises(ValueError, match=expected_message):
-        client.check_login(**kwargs)
+        client.check(identity_key, **kwargs)
 
 
 def test_extracts_ip_and_user_agent_from_request(monkeypatch):
@@ -103,7 +103,7 @@ def test_extracts_ip_and_user_agent_from_request(monkeypatch):
     monkeypatch.setattr(Api, "post", fake_post)
 
     req = mock_request("192.168.1.1", "Mozilla/5.0")
-    result = client.check_login(request=req, identity_key="validUser")
+    result = client.check("validUser", request=req)
 
     assert result.status == "success"
     assert LoginCheckStatus.VALID in result.codes
