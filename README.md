@@ -35,7 +35,7 @@ from loginllama import LoginLlama
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-loginllama = LoginLlama(api_key='your-api-key')
+loginllama = LoginLlama(api_token='your-api-key')
 
 # Add middleware to auto-capture request context
 @app.before_request
@@ -172,18 +172,18 @@ async def login(login_data: LoginRequest, request: Request):
 
 ## API Reference
 
-### `LoginLlama(api_key=None, base_url=None)`
+### `LoginLlama(api_token=None, base_url=None)`
 
 Create a new LoginLlama client.
 
 **Parameters:**
-- `api_key` (optional): Your API key. Defaults to `LOGINLLAMA_API_KEY` environment variable
+- `api_token` (optional): Your API key. Defaults to `LOGINLLAMA_API_KEY` environment variable
 - `base_url` (optional): Custom API endpoint for testing
 
 ```python
 from loginllama import LoginLlama
 
-loginllama = LoginLlama(api_key='your-api-key')
+loginllama = LoginLlama(api_token='your-api-key')
 ```
 
 ### `loginllama.check(identity_key, **options)`
@@ -216,7 +216,6 @@ class LoginCheck:
 1. Explicit `ip_address` and `user_agent` keyword arguments
 2. Extract from `request` object if provided
 3. Use context from middleware (if used)
-4. Fallback to `$_SERVER` (PHP-style environments)
 
 **Examples:**
 
@@ -316,8 +315,8 @@ from loginllama import LoginCheckStatus
 LoginCheckStatus.VALID
 LoginCheckStatus.IP_ADDRESS_SUSPICIOUS
 LoginCheckStatus.KNOWN_BOT
-LoginCheckStatus.GEO_IMPOSSIBLE_TRAVEL
-LoginCheckStatus.USER_AGENT_SUSPICIOUS
+LoginCheckStatus.IMPOSSIBLE_TRAVEL_DETECTED
+LoginCheckStatus.NEW_LOGIN_LOCATION
 # ... and more
 ```
 
