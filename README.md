@@ -1,169 +1,392 @@
-# LoginLlama API Client
+# LoginLlama Python Client
 
-This Python module provides an interface to interact with the LoginLlama API, which offers login status checks for users based on various parameters.
+Official Python SDK for [LoginLlama](https://loginllama.app) - AI-powered login security and fraud detection.
 
-## Sign up for free at [loginllama.app](https://loginllama.app).
+## Features
+
+- **Automatic Context Detection**: Auto-detects IP address and User-Agent from Flask, Django, FastAPI, and other frameworks
+- **Multi-Source IP Extraction**: Supports X-Forwarded-For, CF-Connecting-IP, X-Real-IP, True-Client-IP with private IP filtering
+- **Middleware Support**: Drop-in middleware for Flask, Django, and FastAPI
+- **Type Hints**: Fully typed for excellent IDE support
+- **Webhook Verification**: Built-in HMAC signature verification
 
 ## Installation
 
-Install via `uv` or pip. Requires Python 3.10 or higher.
-
-```sh
-uv pip install loginllama
-# or
-pip install loginllama
+```bash
+pip install loginllama==2.0.0
 ```
 
-## Usage
+Or with [uv](https://github.com/astral-sh/uv):
 
-First, import the necessary classes:
-
-```python
-from loginllama import LoginLlama, verify_webhook_signature
+```bash
+uv pip install loginllama==2.0.0
 ```
 
-### Initialization
+Requires Python 3.10 or higher.
 
-To initialize the `LoginLlama` class, you can either provide an API token directly or set it in the environment variable `LOGINLLAMA_API_KEY`. Pass `base_url` if you need to target a mock server.
+## Quick Start
 
-```python
-loginllama = LoginLlama(api_token="YOUR_API_TOKEN")
-```
+### With Middleware (Recommended)
 
-Or, if using the environment variable `LOGINLLAMA_API_KEY`:
+The simplest way to use LoginLlama is with the middleware pattern, which automatically captures request context:
 
 ```python
-loginllama = LoginLlama()
-# Pulls from the environment variable LOGINLLAMA_API_KEY
-```
-
-### Checking Login Status
-
-The primary function provided by this module is `check_login`, which checks the login status of a user based on various parameters. Both snake_case and camelCase parameter names are accepted to match the docs.
-
-#### Parameters:
-
-- `request` (optional): A Django or Flask request object. If provided, the IP address and user agent will be extracted from this object.
-- `ip_address` / `ipAddress` (optional): The IP address of the user. If not provided and the `request` object is given, it will be extracted from the request.
-- `user_agent` / `userAgent` (optional): The user agent string of the user. If not provided and the `request` object is given, it will be extracted from the request.
-- `identity_key` / `identityKey`: The unique identity key for the user. This is a required parameter.
-- `email_address`, `geo_country`, `geo_city`, `user_time_of_day`: Optional context fields.
-
-#### Return Value:
-
-The function returns a `LoginCheck` object. This object contains the result of the login check, including the status, message, codes, risk_score, environment, and meta data.
-
-#### Examples:
-
-Using IP address and user agent directly:
-
-```python
-loginCheckResult = loginllama.check_login(
-    ip_address="192.168.1.1",
-    user_agent="Mozilla/5.0",
-    identity_key="user123"
-)
-print(loginCheckResult.status, loginCheckResult.risk_score, loginCheckResult.codes)
-```
-
-Using a Flask request object:
-
-```python
-from flask import Flask, request
+from loginllama import LoginLlama
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-loginllama = LoginLlama(api_token='your_api_token')
+loginllama = LoginLlama(api_key='your-api-key')
 
-@app.route('/login_check', methods=['POST'])
-def login_check():
-    identity_key = request.form.get('identity_key')
-    if not identity_key:
-        return "identity_key is required", 400
+# Add middleware to auto-capture request context
+@app.before_request
+def setup_loginllama():
+    loginllama.middleware()()
 
+@app.route('/login', methods=['POST'])
+def login():
     try:
-        login_check_result = loginllama.check_login(request=request, identity_key=identity_key)
-        return {
-            "status": login_check_result.status,
-            "message": login_check_result.message,
-            "codes": [getattr(code, "value", code) for code in login_check_result.codes]
-        }
-    except ValueError as e:
-        return str(e), 400
-    except Exception as e:
-        return str(e), 500
+        # IP and User-Agent are automatically detected!
+        result = loginllama.check(request.form['email'])
 
-if __name__ == '__main__':
-    app.run()
+        if result.status == 'error' or result.risk_score > 5:
+            print(f"Suspicious login blocked: {result.codes}")
+            return jsonify({'error': 'Login blocked'}), 403
+
+        # Continue with login...
+        return jsonify({'success': True})
+    except Exception as error:
+        print(f'LoginLlama error: {error}')
+        # Fail open on errors
+        return jsonify({'success': True})
 ```
 
-Using a Django request object:
+### Without Middleware
+
+If you prefer not to use middleware, you can pass the request explicitly:
+
+```python
+result = loginllama.check(
+    request.form['email'],
+    request=request
+)
+```
+
+Or provide IP and User-Agent manually:
+
+```python
+result = loginllama.check(
+    'user@example.com',
+    ip_address='203.0.113.42',
+    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64)...'
+)
+```
+
+## Framework Examples
+
+### Flask
+
+```python
+from flask import Flask, request, jsonify
+from loginllama import LoginLlama
+
+app = Flask(__name__)
+loginllama = LoginLlama()  # Uses LOGINLLAMA_API_KEY env var
+
+# Use middleware for automatic detection
+@app.before_request
+def setup_loginllama():
+    loginllama.middleware()()
+
+@app.route('/login', methods=['POST'])
+def login():
+    result = loginllama.check(
+        request.form['email'],
+        geo_country='US',
+        geo_city='San Francisco'
+    )
+
+    if result.risk_score > 5:
+        return jsonify({'error': 'Suspicious login'}), 403
+
+    return jsonify({'success': True})
+```
+
+### Django
 
 ```python
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from loginllama.loginllama import LoginLlama
+from loginllama import LoginLlama
+
+loginllama = LoginLlama()
 
 @csrf_exempt
-def login_check(request):
+def login_view(request):
     if request.method == 'POST':
-        identity_key = request.POST.get('identity_key')
-        if not identity_key:
-            return JsonResponse({"error": "identity_key is required"}, status=400)
+        email = request.POST.get('email')
 
-        try:
-            loginllama = LoginLlama(api_token='your_api_token')
-            login_check_result = loginllama.check_login(request=request, identity_key=identity_key)
-            return JsonResponse({
-                "status": login_check_result.status,
-                "message": login_check_result.message,
-                "codes": [getattr(code, "value", code) for code in login_check_result.codes],
-                "risk_score": login_check_result.risk_score,
-                "environment": login_check_result.environment,
-            })
-        except ValueError as e:
-            return JsonResponse({"error": str(e)}, status=400)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=500)
+        # Pass request explicitly for auto-detection
+        result = loginllama.check(email, request=request)
 
-    return JsonResponse({"error": "Invalid request method"}, status=405)
+        if result.risk_score > 5:
+            return JsonResponse(
+                {'error': 'Suspicious login'},
+                status=403
+            )
+
+        return JsonResponse({'success': True})
+
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+```
+
+### FastAPI
+
+```python
+from fastapi import FastAPI, Request, HTTPException
+from loginllama import LoginLlama
+from pydantic import BaseModel
+
+app = FastAPI()
+loginllama = LoginLlama()
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+@app.post('/login')
+async def login(login_data: LoginRequest, request: Request):
+    # Pass request explicitly for auto-detection
+    result = loginllama.check(
+        login_data.email,
+        request=request
+    )
+
+    if result.risk_score > 5:
+        raise HTTPException(
+            status_code=403,
+            detail='Suspicious login detected'
+        )
+
+    return {'success': True}
+```
+
+## API Reference
+
+### `LoginLlama(api_key=None, base_url=None)`
+
+Create a new LoginLlama client.
+
+**Parameters:**
+- `api_key` (optional): Your API key. Defaults to `LOGINLLAMA_API_KEY` environment variable
+- `base_url` (optional): Custom API endpoint for testing
+
+```python
+from loginllama import LoginLlama
+
+loginllama = LoginLlama(api_key='your-api-key')
+```
+
+### `loginllama.check(identity_key, **options)`
+
+Check a login attempt for suspicious activity.
+
+**Parameters:**
+- `identity_key` (required): User identifier (email, username, user ID, etc.)
+- `ip_address` (optional): Override auto-detected IP address
+- `user_agent` (optional): Override auto-detected User-Agent
+- `request` (optional): Explicit request object (Flask, Django, FastAPI)
+- `email_address` (optional): User's email address for additional verification
+- `geo_country` (optional): ISO country code (e.g., 'US', 'GB')
+- `geo_city` (optional): City name for additional context
+- `user_time_of_day` (optional): Time of login attempt
+
+**Returns:** `LoginCheck` object
+
+```python
+class LoginCheck:
+    status: str  # 'success' or 'error'
+    message: str
+    codes: List[LoginCheckStatus]
+    risk_score: int  # 0-10 scale
+    environment: str
+    meta: Optional[dict]
+```
+
+**Detection Priority:**
+1. Explicit `ip_address` and `user_agent` keyword arguments
+2. Extract from `request` object if provided
+3. Use context from middleware (if used)
+4. Fallback to `$_SERVER` (PHP-style environments)
+
+**Examples:**
+
+```python
+# Auto-detect from middleware context
+result = loginllama.check('user@example.com')
+
+# Pass request explicitly
+result = loginllama.check('user@example.com', request=request)
+
+# Manual override
+result = loginllama.check(
+    'user@example.com',
+    ip_address='203.0.113.42',
+    user_agent='Mozilla/5.0...'
+)
+
+# With additional context
+result = loginllama.check(
+    'user@example.com',
+    email_address='user@example.com',
+    geo_country='US',
+    geo_city='San Francisco'
+)
+```
+
+### `loginllama.middleware()`
+
+Returns middleware function that automatically captures request context using `contextvars`.
+
+**Flask:**
+```python
+@app.before_request
+def setup_loginllama():
+    loginllama.middleware()()
+```
+
+**Django (middleware class):**
+```python
+class LoginLlamaMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.loginllama = LoginLlama()
+
+    def __call__(self, request):
+        self.loginllama.middleware()(request)
+        return self.get_response(request)
+```
+
+**FastAPI:**
+```python
+@app.middleware("http")
+async def loginllama_middleware(request: Request, call_next):
+    loginllama.middleware()(request)
+    response = await call_next(request)
+    return response
+```
+
+### `verify_webhook_signature(payload, signature, secret)`
+
+Verify webhook signature using constant-time HMAC comparison.
+
+**Parameters:**
+- `payload`: Raw webhook body (bytes or str)
+- `signature`: Value from `X-LoginLlama-Signature` header
+- `secret`: Webhook secret from LoginLlama dashboard
+
+**Returns:** `bool`
+
+```python
+from loginllama import verify_webhook_signature
+from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    payload = request.get_data()
+    signature = request.headers.get('X-LoginLlama-Signature')
+
+    if not verify_webhook_signature(payload, signature, os.environ['WEBHOOK_SECRET']):
+        return 'Invalid signature', 401
+
+    event = request.get_json()
+    # Handle event...
+    return 'ok', 200
+```
+
+## Login Status Codes
+
+The SDK exports a `LoginCheckStatus` enum with all possible status codes:
+
+```python
+from loginllama import LoginCheckStatus
+
+# Example status codes:
+LoginCheckStatus.VALID
+LoginCheckStatus.IP_ADDRESS_SUSPICIOUS
+LoginCheckStatus.KNOWN_BOT
+LoginCheckStatus.GEO_IMPOSSIBLE_TRAVEL
+LoginCheckStatus.USER_AGENT_SUSPICIOUS
+# ... and more
 ```
 
 ## Error Handling
 
-The `check_login` function will raise exceptions if any of the required parameters (`ip_address`, `user_agent`, or `identity_key`) are missing (if `request` is not provided).
-
-## API Endpoint
-
-The default API endpoint used by this module is `https://loginllama.app/api/v1`.
-
-## Login Status Codes
-
-The module provides an enumeration `LoginCheckStatus` that lists various possible status codes returned by the LoginLlama API, such as `VALID`, `IP_ADDRESS_SUSPICIOUS`, `KNOWN_BOT`, etc.
-
-## Webhook signature verification
-
-Use the helper to verify the `X-LoginLlama-Signature` header with the raw request body:
+The SDK will raise exceptions if required parameters are missing:
 
 ```python
-from loginllama import verify_webhook_signature
+try:
+    result = loginllama.check('user@example.com')
+except ValueError as error:
+    if 'IP address could not be detected' in str(error):
+        # No IP available - pass ip_address or request explicitly
+        # or use middleware()
+        pass
+except Exception as error:
+    # Consider failing open on errors to avoid blocking legitimate users
+    print(f'LoginLlama error: {error}')
+```
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    payload = request.get_data()
-    signature = request.headers.get("X-LoginLlama-Signature")
+**Best Practice:** Fail open on errors to avoid blocking legitimate users during API outages:
 
-    if not verify_webhook_signature(payload, signature, os.environ["WEBHOOK_SECRET"]):
-        return "Invalid signature", 401
+```python
+try:
+    result = loginllama.check(email)
+    if result.risk_score > 5:
+        # Block suspicious login
+        return jsonify({'error': 'Login blocked'}), 403
+except Exception as error:
+    print(f'LoginLlama error: {error}')
+    # Fail open - allow login to proceed
+    return jsonify({'success': True})
+```
 
-    event = request.get_json()
-    # handle event...
-    return "ok", 200
+## IP Detection
+
+The SDK automatically detects IP addresses from multiple sources with priority fallback:
+
+1. **X-Forwarded-For** - Parses chain, takes first public IP (filters private IPs)
+2. **CF-Connecting-IP** - Cloudflare real client IP
+3. **X-Real-IP** - nginx proxy header
+4. **True-Client-IP** - Akamai/Cloudflare header
+5. **Direct connection** - `REMOTE_ADDR`, framework-specific attributes
+
+**Private IP Filtering:** Automatically filters `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`, `127.x.x.x`, `::1`, `fc00::/7`, `fe80::/10`
+
+## Type Hints
+
+The SDK is fully typed with type hints:
+
+```python
+from loginllama import (
+    LoginLlama,
+    LoginCheck,
+    LoginCheckStatus,
+    verify_webhook_signature
+)
 ```
 
 ## Contributing
 
-If you find any issues or have suggestions for improvements, please open an issue or submit a pull request. Your contributions are welcome!
+Contributions are welcome! Please open an issue or submit a pull request on [GitHub](https://github.com/joshghent/loginllama.py).
 
 ## License
 
-This module is licensed under the MIT License.
+MIT License
+
+## Support
+
+- Documentation: [loginllama.app/docs](https://loginllama.app/docs)
+- Dashboard: [loginllama.app/dashboard](https://loginllama.app/dashboard)
+- Issues: [GitHub Issues](https://github.com/joshghent/loginllama.py/issues)
