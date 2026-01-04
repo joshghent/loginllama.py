@@ -33,6 +33,14 @@ class LoginCheckStatus(Enum):
     IMPOSSIBLE_TRAVEL_DETECTED = "impossible_travel_detected"
 
 
+class AuthenticationOutcome(Enum):
+    """Authentication outcome values for tracking login results"""
+
+    SUCCESS = "success"  # User's credentials were valid (default)
+    FAILED = "failed"  # User's credentials were invalid
+    PENDING = "pending"  # Pre-auth check, outcome not yet known
+
+
 @dataclass
 class LoginCheck:
     """Response from the LoginLlama API"""
@@ -42,6 +50,7 @@ class LoginCheck:
     codes: List[Union[LoginCheckStatus, str]]
     risk_score: int
     environment: str
+    authentication_outcome: Optional[str] = None
     meta: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
@@ -103,6 +112,7 @@ class LoginLlama:
         geo_country: Optional[str] = None,
         geo_city: Optional[str] = None,
         user_time_of_day: Optional[str] = None,
+        authentication_outcome: Optional[Union[str, AuthenticationOutcome]] = None,
         request: Optional[Any] = None,
     ) -> LoginCheck:
         """
@@ -121,6 +131,10 @@ class LoginLlama:
             geo_country: Country name or ISO code
             geo_city: City name
             user_time_of_day: User's local time in HH:mm format
+            authentication_outcome: Customer's authentication outcome:
+                - 'success' (default): User's credentials were valid
+                - 'failed': User's credentials were invalid
+                - 'pending': Pre-auth check, outcome not yet known
             request: Framework request object for explicit extraction
 
         Returns:
@@ -146,6 +160,13 @@ class LoginLlama:
                 'user@example.com',
                 ip_address='1.2.3.4',
                 user_agent='Custom/1.0'
+            )
+
+            # Pre-auth check
+            result = loginllama.check(
+                email,
+                authentication_outcome='pending',
+                request=request
             )
         """
         if not identity_key:
@@ -185,6 +206,14 @@ class LoginLlama:
                 "or use the middleware() function."
             )
 
+        # Convert AuthenticationOutcome enum to string if needed
+        auth_outcome_str: Optional[str] = None
+        if authentication_outcome is not None:
+            if isinstance(authentication_outcome, AuthenticationOutcome):
+                auth_outcome_str = authentication_outcome.value
+            else:
+                auth_outcome_str = authentication_outcome
+
         # Make API call
         response = self.api.post(
             "/login/check",
@@ -196,6 +225,7 @@ class LoginLlama:
                 "geo_country": geo_country,
                 "geo_city": geo_city,
                 "user_time_of_day": user_time_of_day,
+                "authentication_outcome": auth_outcome_str,
             },
         )
 
@@ -213,8 +243,108 @@ class LoginLlama:
             codes=codes,
             risk_score=response.get("risk_score", 0),
             environment=response.get("environment", "production"),
+            authentication_outcome=response.get("authentication_outcome"),
             meta=response.get("meta"),
             error=response.get("error"),
+        )
+
+    def report_success(
+        self,
+        identity_key: str,
+        *,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        email_address: Optional[str] = None,
+        geo_country: Optional[str] = None,
+        geo_city: Optional[str] = None,
+        user_time_of_day: Optional[str] = None,
+        request: Optional[Any] = None,
+    ) -> LoginCheck:
+        """
+        Report a successful authentication
+
+        Use this after the user has successfully authenticated with your system.
+        This is a convenience method equivalent to:
+        `check(identity_key, authentication_outcome='success', ...)`
+
+        Args:
+            identity_key: User identifier (email, username, user ID, etc.)
+            ip_address: Override auto-detected IP address
+            user_agent: Override auto-detected User-Agent
+            email_address: User's email for notifications
+            geo_country: Country name or ISO code
+            geo_city: City name
+            user_time_of_day: User's local time in HH:mm format
+            request: Framework request object for explicit extraction
+
+        Returns:
+            LoginCheck object with status, risk_score, and codes
+
+        Examples:
+            # After successful login
+            auth_result = authenticate(email, password)
+            if auth_result.success:
+                loginllama.report_success(user.id, request=request)
+        """
+        return self.check(
+            identity_key,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            email_address=email_address,
+            geo_country=geo_country,
+            geo_city=geo_city,
+            user_time_of_day=user_time_of_day,
+            authentication_outcome=AuthenticationOutcome.SUCCESS,
+            request=request,
+        )
+
+    def report_failure(
+        self,
+        identity_key: str,
+        *,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        email_address: Optional[str] = None,
+        geo_country: Optional[str] = None,
+        geo_city: Optional[str] = None,
+        user_time_of_day: Optional[str] = None,
+        request: Optional[Any] = None,
+    ) -> LoginCheck:
+        """
+        Report a failed authentication attempt
+
+        Use this when the user's credentials are invalid (wrong password, MFA failed, etc.).
+        This helps LoginLlama detect brute force and credential stuffing attacks.
+
+        Args:
+            identity_key: User identifier (email, username, user ID, etc.)
+            ip_address: Override auto-detected IP address
+            user_agent: Override auto-detected User-Agent
+            email_address: User's email for notifications
+            geo_country: Country name or ISO code
+            geo_city: City name
+            user_time_of_day: User's local time in HH:mm format
+            request: Framework request object for explicit extraction
+
+        Returns:
+            LoginCheck object with status, risk_score, and codes
+
+        Examples:
+            # After failed login
+            auth_result = authenticate(email, password)
+            if not auth_result.success:
+                loginllama.report_failure(email, request=request)
+        """
+        return self.check(
+            identity_key,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            email_address=email_address,
+            geo_country=geo_country,
+            geo_city=geo_city,
+            user_time_of_day=user_time_of_day,
+            authentication_outcome=AuthenticationOutcome.FAILED,
+            request=request,
         )
 
     def middleware(self):
