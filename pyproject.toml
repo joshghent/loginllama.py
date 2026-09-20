@@ -7,12 +7,12 @@ requires-python = ">=3.10"
 authors = [{ name = "Josh Ghent", email = "me@joshghent.com" }]
 license = { text = "MIT" }
 dependencies = [
-  "requests>=2.33.1",
+  "requests>=2.34.2",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=9.0.3",
+  "pytest>=9.1.1",
   "requests-mock>=1.12.1",
 ]
 
