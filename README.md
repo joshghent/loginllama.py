@@ -13,16 +13,16 @@ Official Python SDK for [LoginLlama](https://loginllama.app) - AI-powered login 
 ## Installation
 
 ```bash
-pip install loginllama==2.0.0
+pip install loginllama
 ```
 
 Or with [uv](https://github.com/astral-sh/uv):
 
 ```bash
-uv pip install loginllama==2.0.0
+uv pip install loginllama
 ```
 
-Requires Python 3.10 or higher.
+Requires Python 3.11 or higher.
 
 ## Quick Start
 

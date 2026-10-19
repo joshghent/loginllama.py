@@ -1,9 +1,9 @@
 [project]
 name = "loginllama"
-version = "2.0.0"
+version = "3.0.0"
 description = "Python SDK for LoginLlama suspicious login detection"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{ name = "Josh Ghent", email = "me@joshghent.com" }]
 license = { text = "MIT" }
 dependencies = [
