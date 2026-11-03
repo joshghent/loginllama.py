@@ -199,6 +199,7 @@ Check a login attempt for suspicious activity.
 - `geo_country` (optional): ISO country code (e.g., 'US', 'GB')
 - `geo_city` (optional): City name for additional context
 - `user_time_of_day` (optional): Time of login attempt
+- `privileged` (optional): `True` for admins and other accounts that would hurt most if taken over. Any risk signal on them counts for more, and they get 3 failed attempts before a burst rather than 10
 
 **Returns:** `LoginCheck` object
 

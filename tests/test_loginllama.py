@@ -117,3 +117,24 @@ def test_webhook_signature_verification():
     assert verify_webhook_signature(payload, signature, secret) is True
     assert verify_webhook_signature(payload, "deadbeef", secret) is False
     assert verify_webhook_signature(payload, signature, "wrong") is False
+
+
+@pytest.mark.parametrize("method", ["check", "report_success", "report_failure"])
+def test_sends_privileged_for_an_admin(monkeypatch, method):
+    client = LoginLlama(api_token="mockToken")
+    sent = {}
+
+    def fake_post(self, url, params):
+        sent.update(params)
+        return {"status": "success", "message": "", "codes": [], "risk_score": 0}
+
+    monkeypatch.setattr(Api, "post", fake_post)
+
+    getattr(client, method)(
+        "admin@example.test",
+        ip_address="192.168.1.1",
+        user_agent="Mozilla/5.0",
+        privileged=True,
+    )
+
+    assert sent["privileged"] is True
