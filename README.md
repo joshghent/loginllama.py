@@ -204,7 +204,7 @@ Check a login attempt for suspicious activity.
 
 ```python
 class LoginCheck:
-    status: str  # 'success' or 'error'
+    status: str  # 'success', 'error' or 'unavailable'
     message: str
     codes: List[LoginCheckStatus]
     risk_score: int  # 0-10 scale
@@ -337,19 +337,12 @@ except Exception as error:
     print(f'LoginLlama error: {error}')
 ```
 
-**Best Practice:** Fail open on errors to avoid blocking legitimate users during API outages:
-
-```python
-try:
-    result = loginllama.check(email)
-    if result.risk_score > 5:
-        # Block suspicious login
-        return jsonify({'error': 'Login blocked'}), 403
-except Exception as error:
-    print(f'LoginLlama error: {error}')
-    # Fail open - allow login to proceed
-    return jsonify({'success': True})
-```
+**Outages fail open.** If LoginLlama cannot be reached within 2 seconds, or
+answers with a server error, `check()` returns `status='unavailable'` and
+`risk_score=0` instead of raising. Code that branches on `risk_score`, or on
+`status == 'error'`, lets the login through, so an outage never blocks a real
+user. A 4xx, such as a bad API key or an exhausted quota, still raises
+`requests.HTTPError`.
 
 ## IP Detection
 
