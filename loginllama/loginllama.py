@@ -31,6 +31,10 @@ class LoginCheckStatus(Enum):
     AI_DETECTED_SUSPICIOUS = "ai_detected_suspicious"
     NEW_LOGIN_LOCATION = "new_login_location"
     IMPOSSIBLE_TRAVEL_DETECTED = "impossible_travel_detected"
+    GEO_MISMATCH_DETECTED = "geo_mismatch_detected"
+    AFTER_FAILURE_BURST = "after_failure_burst"
+    IP_PASSWORD_SPRAYING = "ip_password_spraying"
+    PRIVILEGED_ACCOUNT = "privileged_account"
 
 
 class AuthenticationOutcome(Enum):
@@ -113,6 +117,7 @@ class LoginLlama:
         geo_city: Optional[str] = None,
         user_time_of_day: Optional[str] = None,
         authentication_outcome: Optional[Union[str, AuthenticationOutcome]] = None,
+        privileged: bool = False,
         request: Optional[Any] = None,
     ) -> LoginCheck:
         """
@@ -135,6 +140,9 @@ class LoginLlama:
                 - 'success' (default): User's credentials were valid
                 - 'failed': User's credentials were invalid
                 - 'pending': Pre-auth check, outcome not yet known
+            privileged: True for admins and other accounts that would hurt
+                most if taken over. Any risk signal on them counts for more,
+                and they get 3 failed attempts before a burst rather than 10.
             request: Framework request object for explicit extraction
 
         Returns:
@@ -226,6 +234,7 @@ class LoginLlama:
                 "geo_city": geo_city,
                 "user_time_of_day": user_time_of_day,
                 "authentication_outcome": auth_outcome_str,
+                "privileged": privileged,
             },
         )
 
@@ -258,6 +267,7 @@ class LoginLlama:
         geo_country: Optional[str] = None,
         geo_city: Optional[str] = None,
         user_time_of_day: Optional[str] = None,
+        privileged: bool = False,
         request: Optional[Any] = None,
     ) -> LoginCheck:
         """
@@ -275,6 +285,7 @@ class LoginLlama:
             geo_country: Country name or ISO code
             geo_city: City name
             user_time_of_day: User's local time in HH:mm format
+            privileged: True for admins; see check()
             request: Framework request object for explicit extraction
 
         Returns:
@@ -294,6 +305,7 @@ class LoginLlama:
             geo_country=geo_country,
             geo_city=geo_city,
             user_time_of_day=user_time_of_day,
+            privileged=privileged,
             authentication_outcome=AuthenticationOutcome.SUCCESS,
             request=request,
         )
@@ -308,6 +320,7 @@ class LoginLlama:
         geo_country: Optional[str] = None,
         geo_city: Optional[str] = None,
         user_time_of_day: Optional[str] = None,
+        privileged: bool = False,
         request: Optional[Any] = None,
     ) -> LoginCheck:
         """
@@ -324,6 +337,7 @@ class LoginLlama:
             geo_country: Country name or ISO code
             geo_city: City name
             user_time_of_day: User's local time in HH:mm format
+            privileged: True for admins; see check()
             request: Framework request object for explicit extraction
 
         Returns:
@@ -343,6 +357,7 @@ class LoginLlama:
             geo_country=geo_country,
             geo_city=geo_city,
             user_time_of_day=user_time_of_day,
+            privileged=privileged,
             authentication_outcome=AuthenticationOutcome.FAILED,
             request=request,
         )
